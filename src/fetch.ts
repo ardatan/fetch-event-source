@@ -74,20 +74,22 @@ export function fetchEventSource(input: RequestInfo, {
         let curRequestController: AbortController;
         function onVisibilityChange() {
             curRequestController.abort(); // close existing request on every visibility change
-            if (!document.hidden) {
+            if (!(typeof document !== 'undefined' && document.hidden)) {
                 create(); // page is now visible again, recreate request.
             }
         }
 
-        if (!openWhenHidden) {
+        if (typeof document !== 'undefined' && !openWhenHidden) {
             document.addEventListener('visibilitychange', onVisibilityChange);
         }
 
         let retryInterval = DefaultRetryInterval;
         let retryTimer = 0;
         function dispose() {
-            document.removeEventListener('visibilitychange', onVisibilityChange);
-            window.clearTimeout(retryTimer);
+            if (typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            }
+            clearTimeout(retryTimer);
             curRequestController.abort();
         }
 
@@ -97,12 +99,15 @@ export function fetchEventSource(input: RequestInfo, {
             resolve(); // don't waste time constructing/logging errors
         });
 
-        const fetch = inputFetch ?? window.fetch;
+        const fetchFn = inputFetch ?? fetch;
         const onopen = inputOnOpen ?? defaultOnOpen;
         async function create() {
+            if (curRequestController) {
+                curRequestController.abort();
+            }
             curRequestController = new AbortController();
             try {
-                const response = await fetch(input, {
+                const response = await fetchFn(input, {
                     ...rest,
                     headers,
                     signal: curRequestController.signal,
@@ -131,8 +136,8 @@ export function fetchEventSource(input: RequestInfo, {
                     try {
                         // check if we need to retry:
                         const interval: any = onerror?.(err) ?? retryInterval;
-                        window.clearTimeout(retryTimer);
-                        retryTimer = window.setTimeout(create, interval);
+                        clearTimeout(retryTimer);
+                        retryTimer = setTimeout(create, interval);
                     } catch (innerErr) {
                         // we should not retry anymore:
                         dispose();
